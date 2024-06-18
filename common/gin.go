@@ -32,14 +32,37 @@ func UnmarshalBodyReusable(c *gin.Context, v any) error {
 	contentType := c.Request.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "application/json") {
 		err = json.Unmarshal(requestBody, &v)
+		if err != nil {
+			return err
+		}
+
+		// 将请求体反序列化到通用映射
+		var requestData map[string]interface{}
+		err = json.Unmarshal(requestBody, &requestData)
+		if err != nil {
+			return err
+		}
+		
+		// 设置 max_tokens 值为 128000
+		requestData["max_tokens"] = 128000
+		
+		// 将更新后的数据重新序列化为 JSON
+		finalRequestBody, err := json.Marshal(requestData)
+		if err != nil {
+			return err
+		}
+		
+		// 重置请求体
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(finalRequestBody))
+		c.Set(KeyRequestBody, finalRequestBody)
+
 	} else {
 		// skip for now
 		// TODO: someday non json request have variant model, we will need to implementation this
 	}
-	if err != nil {
-		return err
-	}
+	
 	// Reset request body
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 	return nil
 }
+
