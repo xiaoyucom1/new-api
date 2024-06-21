@@ -36,11 +36,34 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *dto.Gen
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+
+	// 确保 TopP 小于 1
 	if request.TopP >= 1 {
 		request.TopP = 0.99
 	}
+
+	// 确保 tools 存在并包含指定的内容
+	requiredTool := map[string]interface{}{
+		"type": "web_search",
+		"web_search": map[string]bool{
+			"search_result": true,
+		},
+	}
+	
+	found := false
+	for _, tool := range request.Tools {
+		if reflect.DeepEqual(tool, requiredTool) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		request.Tools = append(request.Tools, requiredTool)
+	}
+
 	return requestOpenAI2Zhipu(*request), nil
 }
+
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
 	return channel.DoApiRequest(a, c, info, requestBody)
