@@ -32,7 +32,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, info *re
 	return nil
 }
 
-func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *dto.GeneralOpenAIRequest) (any, error) {
+func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *dto.GeneralOpenAIRequest) (interface{}, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
@@ -42,41 +42,31 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *dto.Gen
 		request.TopP = 0.99
 	}
 
-	// 确保 tools 存在并包含指定的内容
-	requiredTool := map[string]interface{}{
-		"type": "web_search",
-		"web_search": map[string]bool{
-			"search_result": true,
-		},
-	}
-	
-	found := false
+	// 检查并添加 requiredTool
+	var found bool
 	for _, tool := range request.Tools {
-		if reflect.DeepEqual(tool, requiredTool) {
-			found = true
-			break
+		if tool["type"] == "web_search" {
+			if webSearch, ok := tool["web_search"].(map[string]bool); ok && webSearch["search_result"] {
+				found = true
+				break
+			}
 		}
 	}
 	if !found {
 		request.Tools = append(request.Tools, requiredTool)
 	}
 
-	return requestOpenAI2Zhipu(*request), nil
-}
+	// 转换请求格式
+	convertedRequest := requestOpenAI2Zhipu(*request)
 
-
-func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (*http.Response, error) {
-	return channel.DoApiRequest(a, c, info, requestBody)
-}
-
-func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage *dto.Usage, err *dto.OpenAIErrorWithStatusCode) {
-	if info.IsStream {
-		err, usage = zhipuStreamHandler(c, resp)
-	} else {
-		err, usage = zhipuHandler(c, resp)
+	// 确保转换后的请求符合质谱API的期望格式
+	if err := validateZhipuRequest(convertedRequest); err != nil {
+		return nil, err
 	}
-	return
+
+	return convertedRequest, nil
 }
+
 
 func (a *Adaptor) GetModelList() []string {
 	return ModelList
